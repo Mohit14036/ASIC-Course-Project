@@ -128,8 +128,9 @@ import pkg_PE::*;
     MAX max(.A(Null_Mux_Out),.B(B_Psum),.out(Max_Out));
 ///////////////////////////////////////  MAC,MAX AND MIN END/////////////////////////////////////////
 
-
-    assign Psum = MAC_MAX ? Min_Out : Max_Out;
+    always_ff@(posedge clk) begin
+        Psum <= MAC_MAX ? Min_Out : Max_Out;
+    end
 
 endmodule
 
