@@ -1,21 +1,21 @@
-//import pkg::*;
-
-
-package pkg_cnn;
-
+package pkg_PE;
     parameter M = 32;
+    parameter N = 27;
     parameter K =16;
-    parameter delta = 63;
+    parameter delta = 64;
     parameter Delta_Bit_Width = 6;      // DELTA_BIT_WIDTH = $CLOG2(delta). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
 
-    parameter  Z =63 ;
+    parameter  Z =64 ;
     parameter Z_Bit_Width = 6;          // Z_BIT_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
     parameter Line_Selection_Width = 5; // LINE_SELECTION_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
 
 endpackage
 
 
-import pkg_cnn::*;
+
+
+
+
 
 
 
@@ -24,7 +24,9 @@ import pkg_cnn::*;
 
 */
 
-module PE (
+module PE 
+import pkg_PE::*;
+(
     input logic S_Ovd,                                              //SIGNAL FOR OVERRIDING SIGN ZERO DETECTOR TO ALLOW NEGETIVE AND NULL INPUTS.
     input logic [Line_Selection_Width-1:0] Line_Selection_Control,  // SIGNAL TO SELECT INPUT FROM M INPUTS
     input logic signed [K-1:0] B_Psum,         //BIAS OR PARTIAL SUM.
@@ -95,10 +97,8 @@ module PE (
     );
 
 
-    Memory memory(
-        .WE(WE),.RE(RE),.Din(W),.RA(RA),.WA(WA),.Dout(Dout),.clk(clk)
-
-    );
+    Memory #(.Data_Width(K),.Data_Depth(Z),.Address_Bit_Width(Z_Bit_Width)) 
+    memory(.WE(WE),.RE(RE),.Din(W),.RA(RA),.WA(WA),.Dout(Dout),.clk(clk));
 
 /////////////////////////////////////// AGU AND MEMORY END /////////////////////////////////////////
 
@@ -142,7 +142,9 @@ endmodule
 
 
 
-module AGU_Write(
+module AGU_Write
+import pkg_PE::*;
+(
     input logic [Delta_Bit_Width-1:0] Delta,
     input clk,
 
@@ -167,7 +169,9 @@ module AGU_Write(
 
 endmodule
 
-module AGU_Read(
+module AGU_Read
+import pkg_PE::*;
+(
     input logic [Delta_Bit_Width-1:0] Delta,    
     input clk,
 
@@ -194,33 +198,11 @@ endmodule
 
 
 
-module Memory(     // THIS IS MODELLED LIKE SDP (SIMPLE DUAL PORT RAM) . CHANGE CODE IF U FIND THE BEHAVIOR OF RAM IS INNACURATE.
-
-    input logic WE,RE,
-    input logic [K-1:0] Din,  
-    input logic [Z_Bit_Width-1:0] RA,WA,
-    output logic [K-1:0] Dout,
-     
-    input logic clk
-
-);
-    logic [K-1:0] RAM [0:Z-1];    
-    always_ff@(posedge clk) begin 
-        if (WE) RAM[WA] <= Din;
-    end
 
 
-    always_ff @(posedge clk) begin
-        if (RE)
-            Dout <= RAM[RA];
-    end
-
-
-
-endmodule
-
-
-module MAC(
+module MAC
+import pkg_PE::*;
+(
     input logic signed [K-1:0] weight, //WEIGHT FROM MEMORY
     input logic signed [K-1:0] in,    //INPUT FROM REGISTER
     input logic enb,                    // EMABLE FROM SZD
@@ -248,7 +230,9 @@ module MAC(
 
 endmodule 
 
-module MAX(
+module MAX
+import pkg_PE::*;
+(
     input logic signed [K-1:0] A,B,  //K BIT INPUTS 
     output logic signed [K-1:0] out  // K BIT OUTPUT.
 );
@@ -266,7 +250,9 @@ module MAX(
 
 endmodule
 
-module MIN(
+module MIN
+import pkg_PE::*;
+(
     input logic signed [K-1:0] A,B,  // A IN MAC OUTPUT  AND B IS 6
     output logic signed [K-1:0] out,
 
