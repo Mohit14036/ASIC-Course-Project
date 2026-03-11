@@ -3,8 +3,8 @@ package pkg_line_memory;
     parameter A = 128;
     parameter A_Bit_Width = 7;
 
-    parameter N = 32;
-    parameter N_Bit_Width = 5;
+    parameter N = 6;
+    parameter N_Bit_Width = 3;
 
     parameter K =16;
    // parameter delta = 64;
@@ -32,6 +32,7 @@ import pkg_line_memory::*;
         input logic Next_Stride,
         input logic Reuse_Selector,
         input logic [A_Bit_Width+N_Bit_Width-1:0]r_ns,
+        input logic rst,
 
         output logic signed [K-1:0] O[0:N-1]
 );
@@ -50,7 +51,7 @@ import pkg_line_memory::*;
 
     
     logic [A_Bit_Width-1:0] WA;  // WRITE ADDRESS FOR MEMORY
-    WAG wag(.Write_Selector(Write_Selector),.WA(WA),.clk(clk)); // WAG
+    WAG wag(.Write_Selector(Write_Selector),.WA(WA),.clk(clk),.rst(rst)); // WAG
 
     logic [N_Bit_Width-1:0] Output_Mux_Select; // MUX SELECT LINE
     logic Address_Decoder_Enb;           
@@ -59,7 +60,7 @@ import pkg_line_memory::*;
     wire [A_Bit_Width-1:0] Rd_Ptr = Reuse_Selector? RA_r:RA_n; //READ POINTER
     logic [A_Bit_Width-1:0] RA;  // READ ADDRESS FOR MEMORY
     RAG rag(.ns(ns),.Rd_Ptr(Rd_Ptr),.Next_Stride(Next_Stride),.RE(RE),.RA(RA),.Address_Decoder_In(Address_Decoder_In),
-            .Output_Mux_Select(Output_Mux_Select),.Address_Decoder_Enb(Address_Decoder_Enb),.clk(clk));
+            .Output_Mux_Select(Output_Mux_Select),.Address_Decoder_Enb(Address_Decoder_Enb),.clk(clk),.rst(rst));
 
     logic [K-1:0] Output_Buffer_Din; // DOUT OF MEMORY AND DIN OF BUFFER.
     Memory #(.Data_Width(K),.Data_Depth(A),.Address_Bit_Width(A_Bit_Width)) 
@@ -139,11 +140,11 @@ module  WAG
 (
     input logic Write_Selector,
     output logic [A_Bit_Width-1:0] WA,
-
+    input logic rst,
     input logic clk
 );
     always_ff@(posedge clk) begin
-        if(WA == A) WA <=0;   //TO PREVENT  WA CROSSING A (NOT NEEDED IF A IS POWER OF 2)
+        if(WA == A | rst) WA <=0;   //TO PREVENT  WA CROSSING A (NOT NEEDED IF A IS POWER OF 2)
         else WA <= WA+ Write_Selector;
     end
 
@@ -157,6 +158,7 @@ module  RAG
     input logic [A_Bit_Width-1:0] Rd_Ptr,
     input logic Next_Stride,
     input logic RE,
+    input logic rst,
 
     output logic [A_Bit_Width-1:0] RA,
     output logic [N_Bit_Width-1:0] Address_Decoder_In,
@@ -178,15 +180,23 @@ module  RAG
     assign Address_Decoder_Enb  = Set_Reset && RE;
 
     always_ff@(posedge clk) begin
-        
+        if(rst )begin
+            Output_Mux_Select<=0;
+        end
         if(Address_Decoder_Enb) begin
+            if(Output_Mux_Select == N-1) Output_Mux_Select <=0; //TO PREVENT  Output_Mux_Select CROSSING N (NOT NEEDED IF N IS POWER OF 2)
+             else begin
             Output_Mux_Select <= Output_Mux_Select + ns;
+             end
         end
     end
 
 
     always_ff@(posedge clk) begin
+        if(rst | Address_Decoder_In == N-1) Address_Decoder_In <= 0;
+        else begin
         Address_Decoder_In <= Address_Decoder_In + Set_Reset;
+        end
     end
 
     

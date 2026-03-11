@@ -1,13 +1,13 @@
 package pkg_PE;
-    parameter M = 32;
-    parameter N = 27;
+    parameter M = 9;
+    parameter N = 6;
     parameter K =16;
     parameter delta = 64;
-    parameter Delta_Bit_Width = 6;      // DELTA_BIT_WIDTH = $CLOG2(delta). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
+    parameter Delta_Bit_Width = 4;      // DELTA_BIT_WIDTH = $CLOG2(delta). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
 
-    parameter  Z =64 ;
-    parameter Z_Bit_Width = 6;          // Z_BIT_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
-    parameter Line_Selection_Width = 5; // LINE_SELECTION_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
+    parameter  Z =16 ;
+    parameter Z_Bit_Width = 4;          // Z_BIT_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
+    parameter Line_Selection_Width = 4; // LINE_SELECTION_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
 
 endpackage
 
@@ -40,7 +40,7 @@ import pkg_PE::*;
     input logic signed [K-1:0] Ix [0:M-1],  // INPUT BUS CARRYING M INPUTS FROM M LINE MEMORIES.
     input logic MAC_MAX,                    // CONTROL SIGNAL TO DETERMINE BETWEEN MAC AND MAX OPERATION.
 
-
+    input logic rst,
     
     
     
@@ -89,11 +89,11 @@ import pkg_PE::*;
 
 
     AGU_Read  read_agu(
-        .Delta(Delta),.clk(clk),.RE(RE),.RA(RA),.rst(Stride_Request)
+        .Delta(Delta),.clk(clk),.RE(RE),.RA(RA),.rst(Stride_Request),.rstext(rst)
     );
 
     AGU_Write   write_agu(
-        .Delta(Delta),.clk(clk),.Wr(Wr_Rr[1]), .WA(WA)
+        .Delta(Delta),.clk(clk),.Wr(Wr_Rr[1]), .WA(WA),.rstext(rst)
     );
 
 
@@ -148,7 +148,7 @@ import pkg_PE::*;
 (
     input logic [Delta_Bit_Width-1:0] Delta,
     input clk,
-
+    input logic rstext,
     input logic Wr,  //EXTERNAL SIGNAL TO CONTROL COUNTER.
 
     output logic [Z_Bit_Width-1:0] WA  //WRITE ADDRESS OF MEMORY.
@@ -159,7 +159,7 @@ import pkg_PE::*;
     wire [Delta_Bit_Width-1:0] Counter;      //TO COUNT TO Z/DELTA
 
     assign Counter  = Wr + WA;
-    assign rst = (Counter == Delta);        //RESET HIGH WHEN COUNTER REACHES DELTA
+    assign rst = (Counter == Delta) | rstext;        //RESET HIGH WHEN COUNTER REACHES DELTA
 
     always@(posedge clk) begin
         if(rst) WA<= 0;
@@ -179,7 +179,8 @@ import pkg_PE::*;
     input logic RE,  //READ ENABLE OF MEMORY
 
     output logic [Z_Bit_Width-1:0] RA, //READ ADDRESS
-    output wire  rst   // THE RST IS STRIDE REQUEST 
+    output wire  rst,
+    input wire rstext   // THE RST IS STRIDE REQUEST 
 
 );
 
@@ -189,7 +190,7 @@ import pkg_PE::*;
     assign rst = (Counter == Delta);  //RESET HIGH WHEN COUNTER REACHES DELTA
 
     always@(posedge clk) begin
-        if(rst) RA <= 0;
+        if(rst | rstext) RA <= 0;
         else  RA <= Counter;
     end
 

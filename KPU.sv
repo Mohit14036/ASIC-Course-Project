@@ -1,18 +1,18 @@
 
 package pkg_KPU;
-    parameter M = 27;
-    parameter  M_Bit_Width = 5;
+    parameter M = 9;
+    parameter  M_Bit_Width = 4;
 
-    parameter N = 32;
-    parameter N_Bit_Width =5 ;
+    parameter N = 6;
+    parameter N_Bit_Width =3 ;
     parameter K =16;
 
      parameter delta = 64;
-    parameter Delta_Bit_Width = 6;      // DELTA_BIT_WIDTH = $CLOG2(delta). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
+    parameter Delta_Bit_Width = 4;      // DELTA_BIT_WIDTH = $CLOG2(delta). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
 
-    parameter  Z =64 ;
-    parameter Z_Bit_Width = 6;          // Z_BIT_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
-    parameter Line_Selection_Width = 5; 
+    parameter  Z =16 ;
+    parameter Z_Bit_Width = 4;          // Z_BIT_WIDTH = $CLOG2(M). TO AVOID LINTER WARNINGS I PUT VALUE DIRECTLY.
+    parameter Line_Selection_Width = 4; 
 
 
     parameter A = 128;
@@ -21,7 +21,7 @@ endpackage
 
 
 
-module KPU
+module KPU_cluster
 import pkg_KPU::*;
 (
     input logic signed [K-1:0] BIAS_Bus[0:M-1],
@@ -30,20 +30,33 @@ import pkg_KPU::*;
 
     input logic clk,
 
-    input logic layer_information
+    //INPUTS FOR PE
+    output logic Stride_Request_Bus[0:N-1][0:M-1],
+    input logic MAC_MAX_Bus[0:M-1][0:N-1],
+    input logic [M_Bit_Width-1:0] Line_Selection_Control_Bus[0:M-1][0:N-1], 
+    input logic S_Ovd_Bus[0:M-1][0:N-1],
+
+    input logic [1:0] Wr_Rr_Bus[0:M-1][0:N-1],
+    input logic [2*Z_Bit_Width:0] R6_r_Delta_Bus[0:M-1][0:N-1],    
+
+    output logic signed [K-1:0] adderOutStage1 [2:0],
+    output logic signed [K-1:0] adderOutStage2,
+
+    //INPUTS FOR LINE MEMORY
+    input logic Read_Selector_Bus[0:M-1],
+    input logic Write_Selector_Bus[0:M-1],
+    input logic Reuse_Selector_Bus[0:M-1],
+    input logic [A_Bit_Width-1:0] RA_n_Bus[0:M-1],
+    input logic [A_Bit_Width-1:0] RA_r_Bus[0:M-1],
+    input logic                   Next_Stride_Bus[0:M-1],
+    input logic [A_Bit_Width+N_Bit_Width-1:0]r_ns_Bus[0:M-1]
 );
 
 
     /// BUSES FOR PES
 
     logic signed [K-1:0] Ix_Bus[0:N-1][0:M-1];
-    logic Stride_Request_Bus[0:N-1][0:M-1];
 
-    logic S_Ovd_Bus[0:M-1][0:N-1];
-    logic MAC_MAX_Bus[0:M-1][0:N-1];
-    logic [M_Bit_Width-1:0] Line_Selection_Control_Bus[0:M-1][0:N-1];    
-    logic [1:0] Wr_Rr_Bus[0:M-1][0:N-1];   
-    logic [2*Z_Bit_Width:0] R6_r_Delta_Bus[0:M-1][0:N-1];    
 
     logic [K-1:0] Psum_Collection_Bus[0:M-1][0:N-1];
 
@@ -97,16 +110,10 @@ import pkg_KPU::*;
     endgenerate
 
      /// BUSES FOR LINE MEMORIES
-    logic Read_Selector_Bus[0:M-1];
-    logic Write_Selector_Bus[0:M-1];
-    logic Reuse_Selector_Bus[0:M-1];
-    logic [A_Bit_Width-1:0] RA_n_Bus[0:M-1];
-    logic [A_Bit_Width-1:0] RA_r_Bus[0:M-1];
-    logic                   Next_Stride_Bus[0:M-1];
-     logic [A_Bit_Width+N_Bit_Width-1:0]r_ns_Bus[0:M-1];
+    
 
-     logic signed [K-1:0] Output_Bus_Line_Memory[0:M-1][0:N-1];
-
+    logic signed [K-1:0] Output_Bus_Line_Memory[0:M-1][0:N-1];
+    
       generate
         for(m = 0; m < M; m++) begin : line_memory_row
          Line_Memory line_memory
@@ -137,28 +144,41 @@ import pkg_KPU::*;
             end
         end
 
+    always_comb begin
+        for(int i=0;i<3;i++)begin
+            adderOutStage1[i] = Psum_Collection_Bus[i*3][N-1] + Psum_Collection_Bus[i*3+1][N-1]+ Psum_Collection_Bus[i*3+2][N-1];
+            
+        end
+    end
+    always_comb begin
+            adderOutStage2 = Psum_Collection_Bus[0][N-1] + Psum_Collection_Bus[1][N-1]+ Psum_Collection_Bus[2][N-1]+Psum_Collection_Bus[3][N-1]+ Psum_Collection_Bus[4][N-1]+ Psum_Collection_Bus[5][N-1]+Psum_Collection_Bus[6][N-1]+ Psum_Collection_Bus[7][N-1]+ Psum_Collection_Bus[8][N-1];
+            
+        
+    end
 
-   KPC  kpc
-(
-    .Stride_Request_Bus(Stride_Request_Bus),
+//    KPC  kpc
+// (
+//     .Stride_Request_Bus(Stride_Request_Bus),
 
-    .S_Ovd_Bus(S_Ovd_Bus),
-     .MAC_MAX_Bus(MAC_MAX_Bus),
-    .Line_Selection_Control_Bus(Line_Selection_Control_Bus),    
-    .Wr_Rr_Bus(Wr_Rr_Bus),
-    .R6_r_Delta_Bus(R6_r_Delta_Bus)   ,
+//     .S_Ovd_Bus(S_Ovd_Bus),
+//      .MAC_MAX_Bus(MAC_MAX_Bus),
+//     .Line_Selection_Control_Bus(Line_Selection_Control_Bus),    
+//     .Wr_Rr_Bus(Wr_Rr_Bus),
+//     .R6_r_Delta_Bus(R6_r_Delta_Bus)   ,
     
-    .Read_Selector_Bus(Read_Selector_Bus),
-    .Write_Selector_Bus(Write_Selector_Bus),
-    .Reuse_Selector_Bus(Reuse_Selector_Bus),
-    .RA_n_Bus(RA_n_Bus),
-    .RA_r_Bus(RA_r_Bus),
-    .Next_Stride_Bus(Next_Stride_Bus),
-    .r_ns_Bus(r_ns_Bus),
+//     .Read_Selector_Bus(Read_Selector_Bus),
+//     .Write_Selector_Bus(Write_Selector_Bus),
+//     .Reuse_Selector_Bus(Reuse_Selector_Bus),
+//     .RA_n_Bus(RA_n_Bus),
+//     .RA_r_Bus(RA_r_Bus),
+//     .Next_Stride_Bus(Next_Stride_Bus),
+//     .r_ns_Bus(r_ns_Bus),
 
-    .clk(clk),
-    .layer_information(layer_information)
-);
+//     .clk(clk),
+//     .layer_information(layer_information)
+// );
+
+
 
 endmodule
 
@@ -184,11 +204,29 @@ import pkg_KPU::*;
     output logic [A_Bit_Width+N_Bit_Width-1:0]r_ns_Bus[0:M-1],
 
     input logic clk,
-
+    input logic rst,
     input logic layer_information
 );
-
-
+logic [6:0] counter;
+always_ff@(clk)
+begin
+    if(rst) counter <=0;
+    if(layer_information)begin
+        counter <= counter +1;
+        if(counter != 127) begin
+        for(int i=0;i<M;i++)begin
+            Write_Selector_Bus[i] <=1;
+            Read_Selector_Bus[i] <=0;
+            Reuse_Selector_Bus[i] <=0;
+            RA_n_Bus[i] <=0;
+            RA_r_Bus[i] <=0;
+            Next_Stride_Bus[i] <=0;
+            r_ns_Bus[i] <=0;
+        end
+    end
+    end
+    
+end
 
 endmodule
 
