@@ -184,48 +184,193 @@ endmodule
 
 
 module KPC
-
 import pkg_KPU::*;
 (
-    input logic Stride_Request_Bus[0:N-1][0:M-1],
+    input  logic Stride_Request_Bus [0:N-1][0:M-1],
 
-    output logic S_Ovd_Bus[0:M-1][0:N-1],
-    output logic MAC_MAX_Bus[0:M-1][0:N-1],
-    output logic [M_Bit_Width-1:0] Line_Selection_Control_Bus[0:M-1][0:N-1],    
-    output logic [1:0] Wr_Rr_Bus[0:M-1][0:N-1],
-    output logic [2*Z_Bit_Width:0] R6_r_Delta_Bus[0:M-1][0:N-1]   ,
-    
-    output logic Read_Selector_Bus[0:M-1],
-    output logic Write_Selector_Bus[0:M-1],
-    output logic Reuse_Selector_Bus[0:M-1],
-    output logic [A_Bit_Width-1:0] RA_n_Bus[0:M-1],
-    output logic [A_Bit_Width-1:0] RA_r_Bus[0:M-1],
-    output logic                   Next_Stride_Bus[0:M-1],
-    output logic [A_Bit_Width+N_Bit_Width-1:0]r_ns_Bus[0:M-1],
+    output logic S_Ovd_Bus [0:M-1][0:N-1],
+    output logic MAC_MAX_Bus [0:M-1][0:N-1],
+    output logic [M_Bit_Width-1:0] Line_Selection_Control_Bus [0:M-1][0:N-1],    
+    output logic [1:0] Wr_Rr_Bus [0:M-1][0:N-1],
+    output logic [2*Z_Bit_Width:0] R6_r_Delta_Bus [0:M-1][0:N-1],
 
-    input logic clk,
-    input logic rst,
-    input logic layer_information
+    output logic Read_Selector_Bus [0:M-1],
+    output logic Write_Selector_Bus [0:M-1],
+    output logic Reuse_Selector_Bus [0:M-1],
+    output logic [A_Bit_Width-1:0] RA_n_Bus [0:M-1],
+    output logic [A_Bit_Width-1:0] RA_r_Bus [0:M-1],
+    output logic Next_Stride_Bus [0:M-1],
+    output logic [A_Bit_Width+N_Bit_Width-1:0] r_ns_Bus [0:M-1],
+
+    input  logic clk,
+    input  logic rst,
+    input  logic layer_information
 );
+
+typedef enum logic [2:0] {
+    IDLE,
+    PREFETCH,
+    COMPUTE,
+    STRIDE
+} state_t;
+
+state_t state, next_state;
+
+logic stride_req;
 logic [6:0] counter;
-always_ff@(clk)
-begin
-    if(rst) counter <=0;
-    if(layer_information)begin
-        counter <= counter +1;
-        if(counter != 127) begin
-        for(int i=0;i<M;i++)begin
-            Write_Selector_Bus[i] <=1;
-            Read_Selector_Bus[i] <=0;
-            Reuse_Selector_Bus[i] <=0;
-            RA_n_Bus[i] <=0;
-            RA_r_Bus[i] <=0;
-            Next_Stride_Bus[i] <=0;
-            r_ns_Bus[i] <=0;
-        end
-    end
-    end
-    
+logic [3:0] vertical_stride;
+
+/////////////////////////////////////////////////////
+// Detect stride request from PE array
+/////////////////////////////////////////////////////
+
+always_comb begin
+    stride_req = 0;
+    for(int i=0;i<M;i++)
+        for(int j=0;j<N;j++)
+            stride_req |= Stride_Request_Bus[j][i];
+end
+
+
+/////////////////////////////////////////////////////
+// FSM STATE REGISTER
+/////////////////////////////////////////////////////
+
+always_ff @(posedge clk or posedge rst) begin
+    if(rst)
+        state <= IDLE;
+    else
+        state <= next_state;
+end
+
+
+/////////////////////////////////////////////////////
+// FSM NEXT STATE LOGIC
+/////////////////////////////////////////////////////
+
+always_comb begin
+
+next_state = state;
+
+case(state)
+
+IDLE:
+    if(layer_information)
+        next_state = PREFETCH;
+
+PREFETCH:
+    if(counter == 3) // r = 3 for 3x3 kernel
+        next_state = COMPUTE;
+
+COMPUTE:
+    if(stride_req)
+        next_state = STRIDE;
+
+STRIDE:
+    next_state = COMPUTE;
+
+default:
+    next_state = IDLE;
+
+endcase
+
+end
+
+
+/////////////////////////////////////////////////////
+// COUNTER
+/////////////////////////////////////////////////////
+
+always_ff @(posedge clk or posedge rst) begin
+    if(rst)
+        counter <= 0;
+    else if(state == PREFETCH)
+        counter <= counter + 1;
+    else
+        counter <= 0;
+end
+
+
+/////////////////////////////////////////////////////
+// VERTICAL STRIDE ROTATION
+/////////////////////////////////////////////////////
+
+always_ff @(posedge clk or posedge rst) begin
+    if(rst)
+        vertical_stride <= 0;
+    else if(state == STRIDE)
+        vertical_stride <= vertical_stride + 1;
+end
+
+
+/////////////////////////////////////////////////////
+// LINE MEMORY CONTROL
+/////////////////////////////////////////////////////
+
+always_comb begin
+
+for(int i=0;i<M;i++) begin
+
+    Write_Selector_Bus[i] = (state == PREFETCH) || (state == COMPUTE);
+    Read_Selector_Bus[i]  = (state == COMPUTE);
+    Reuse_Selector_Bus[i] = (state == STRIDE);
+    Next_Stride_Bus[i]    = (state == STRIDE);
+
+    RA_n_Bus[i] = counter;
+    RA_r_Bus[i] = counter;
+
+    r_ns_Bus[i] = {7'd3,3'd1}; // r=3 stride=1
+
+end
+
+end
+
+
+/////////////////////////////////////////////////////
+// PE CONTROL SIGNALS
+/////////////////////////////////////////////////////
+
+always_comb begin
+
+for(int i=0;i<M;i++) begin
+for(int j=0;j<N;j++) begin
+
+    S_Ovd_Bus[i][j] = (state == COMPUTE);
+
+    MAC_MAX_Bus[i][j] = 1'b0; // MAC mode
+
+    if(state == PREFETCH)
+        Wr_Rr_Bus[i][j] = 2'b00;
+    else if(state == COMPUTE)
+        Wr_Rr_Bus[i][j] = 2'b01;
+    else
+        Wr_Rr_Bus[i][j] = 2'b00;
+
+    R6_r_Delta_Bus[i][j] = {1'b0,4'd3,4'd16};
+
+end
+end
+
+end
+
+
+/////////////////////////////////////////////////////
+// LINE SELECTION CONTROL
+/////////////////////////////////////////////////////
+
+always_ff @(posedge clk or posedge rst) begin
+
+for(int i=0;i<M;i++) begin
+for(int j=0;j<N;j++) begin
+
+    if(rst)
+        Line_Selection_Control_Bus[i][j] <= i;
+    else
+        Line_Selection_Control_Bus[i][j] <= (i + vertical_stride) % M;
+
+end
+end
+
 end
 
 endmodule
